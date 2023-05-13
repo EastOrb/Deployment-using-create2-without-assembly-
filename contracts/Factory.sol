@@ -1,49 +1,63 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
+
 import "./TestContract.sol";
 
-contract Factory {
-    event Deployed(address indexed deployedContract);
+contract ContractFactory {
+    // A mapping to keep track of used salts to prevent reusing them
+    mapping(uint => bool) usedSalts;
 
     /**
-     * @notice  . A function to Get the address of a contract
-     * @dev     . returns an address
-     * @param   _owner  . An address[TestContract constructor arguments]
-     * @param   _walletname  . A string[TestContract constructor arguments]
-     * @param   _salt. A unique uint256 used to precompute an address
-    */
-    function createContract(
+     * @notice Create a new instance of TestContract with the given parameters.
+     * @dev Deploys a new instance of TestContract using the CREATE2 opcode.
+     *      Uses the given owner, wallet name, and salt to precompute the address.
+     * @param _owner The address of the owner of the contract.
+     * @param _walletName The name of the wallet.
+     * @param _salt A unique uint256 used to precompute an address.
+     * @param _bytecode The bytecode of the TestContract contract.
+     */
+    function createTestContract(
         address _owner,
-        string memory _walletname,
-        uint _salt
-    ) public payable returns (address deployedContract) {
-        bytes32 salted = bytes32(_salt);
+        string memory _walletName,
+        uint256 _salt,
+        bytes memory _bytecode
+    ) external payable returns (address) {
+        require(!usedSalts[_salt], "Salt already used.");
+        usedSalts[_salt] = true;
 
-        deployedContract = address(new TestContract{salt: salted}(_owner, _walletname));
+        bytes32 salt = bytes32(_salt);
+        bytes32 hash = keccak256(
+            abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(_bytecode))
+        );
+        address contractAddress = address(uint160(uint256(hash)));
 
-        emit Deployed(deployedContract);
+        // Deploy the contract using the precomputed address
+        TestContract testContract = new TestContract{salt: salt}(_owner, _walletName);
+        require(address(testContract) == contractAddress, "Invalid contract address.");
+
+        return address(testContract);
     }
-
 
     /**
-     * @notice  . A function to Compute address of the contract to be deployed
-     * @dev     . returns address where the contract will deployed to if deployed with create2 new opcode
-     * @param   _salt: unique uin256 used to precompute an address
-    */
-    function getAddress(uint _salt, bytes memory bytecode) public view returns (address) {
-         bytes32 salt = bytes32(_salt);
-
-        address predictedAddress = address(uint160(uint(keccak256(
-            abi.encodePacked(
-                bytes1(0xff),
-                address(this), 
-                salt, 
-                keccak256(bytecode) 
-            )
-        ))));
-      
-        return predictedAddress;
+     * @notice Computes the address of a TestContract instance with the given parameters.
+     * @dev Computes the address of a TestContract instance using the CREATE2 opcode.
+     *      Uses the given owner, wallet name, and salt to precompute the address.
+     * @param _owner The address of the owner of the contract.
+     * @param _walletName The name of the wallet.
+     * @param _salt A unique uint256 used to precompute an address.
+     * @param _bytecode The bytecode of the TestContract contract.
+     */
+    function computeTestContractAddress(
+        address _owner,
+        string memory _walletName,
+        uint256 _salt,
+        bytes memory _bytecode
+    ) external view returns (address) {
+        bytes32 salt = bytes32(_salt);
+        bytes32 hash = keccak256(
+            abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(_bytecode))
+        );
+        address contractAddress = address(uint160(uint256(hash)));
+        return contractAddress;
     }
-
-
 }
